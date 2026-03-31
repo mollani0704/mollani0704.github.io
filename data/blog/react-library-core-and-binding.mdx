@@ -1,0 +1,316 @@
+---
+title: 'React 라이브러리 구조 : 코어와 바인딩'
+date: '2026-03-31'
+tags: ['react', 'architecture', 'state-management']
+draft: false
+summary: 'React 라이브러리에서 반복해서 보이는 코어와 바인딩 구조를 useSyncExternalStore와 함께 쉽게 풀어낸 글'
+---
+
+React 라이브러리를 보다 보면 묘한 공통점이 하나 있다.
+
+- Zustand
+- Redux
+- React Query
+- React Router
+
+처음에는 전혀 다른 문제를 푸는 도구처럼 보인다. 어떤 것은 전역 상태 관리 같고, 어떤 것은 서버 상태 관리 같고, 어떤 것은 라우팅 라이브러리처럼 보인다.
+
+그런데 구조를 조금만 깊게 보면 비슷한 패턴이 반복된다.
+
+> 코어(Core) + 바인딩(Binding)
+
+이 글에서는 이 구조가 무엇인지, 왜 많은 React 라이브러리들이 이 패턴을 사용하는지, 그리고 `useSyncExternalStore`가 여기서 어떤 역할을 하는지 쉽게 정리해보겠다.
+
+## 코어(Core)란 무엇일까?
+
+코어는 한마디로 말하면 실제 상태와 기능을 가지고 있는 엔진이다.
+
+중요한 점은 이것이다.
+
+> 코어는 React와 직접적인 관련이 없어도 된다.
+
+오히려 잘 설계된 라이브러리일수록 코어는 React에 의존하지 않는 경우가 많다. 그냥 JavaScript 레벨에서 동작하는 독립적인 로직 덩어리다.
+
+예를 들어 이런 코드를 보자.
+
+```jsx
+// store.js
+let count = 0
+const listeners = new Set()
+
+export const counterStore = {
+  getState() {
+    return count
+  },
+
+  increment() {
+    count++
+    listeners.forEach((listener) => listener())
+  },
+
+  subscribe(listener) {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  },
+}
+```
+
+이 코드는 React를 전혀 사용하지 않는다.
+
+- `useState`가 없다
+- 컴포넌트가 없다
+- Hook도 없다
+
+그런데도 상태를 저장하고, 값을 바꾸고, 변경을 구독할 수 있다.
+
+즉, 이미 하나의 상태 관리 엔진으로 동작하고 있다. 이것이 바로 코어다.
+
+### 코어가 보통 담당하는 것
+
+대부분의 코어는 아래 역할을 가진다.
+
+- 상태 저장
+- 상태 변경
+- 현재 값 조회
+- 변경 구독
+
+정리하면 코어는 실제 로직과 상태를 책임지는 부분이다.
+
+## 바인딩(Binding)이란 무엇일까?
+
+이제 질문이 생긴다.
+
+> React 컴포넌트는 이 코어를 어떻게 사용할까?
+
+여기서 필요한 것이 바인딩이다.
+
+바인딩은 코어를 React에 연결해주는 층이다. 쉽게 말하면 React가 코어를 이해하고 사용할 수 있게 중간에서 이어주는 어댑터라고 보면 된다.
+
+한 줄로 정리하면 이렇다.
+
+> 바인딩은 코어를 React에서 쓸 수 있도록 연결하는 역할이다.
+
+## 바인딩이 하는 일
+
+바인딩은 크게 두 가지 일을 한다.
+
+### 1. 코어에 접근하게 해준다
+
+React 컴포넌트가 store나 client 같은 코어 객체를 가져와 사용할 수 있게 해준다.
+
+### 2. 코어의 변경을 React 렌더링과 연결한다
+
+코어 내부 상태가 바뀌었을 때 React가 그것을 감지하고 다시 렌더링할 수 있게 만든다.
+
+즉, 바인딩의 핵심은 아래 두 가지다.
+
+- access
+- reactivity
+
+이 둘이 함께 있어야 React 안에서 자연스럽게 사용할 수 있다.
+
+## 코드로 보면 더 쉽다
+
+앞에서 만든 `counterStore`를 React에서 사용해보자.
+
+```jsx
+// useCounter.js
+import { useSyncExternalStore } from 'react'
+import { counterStore } from './store'
+
+export function useCounter() {
+  return useSyncExternalStore(counterStore.subscribe, counterStore.getState)
+}
+```
+
+그리고 컴포넌트에서는 이렇게 쓸 수 있다.
+
+```jsx
+function Counter() {
+  const count = useCounter()
+
+  return <button onClick={() => counterStore.increment()}>{count}</button>
+}
+```
+
+여기서 구조를 나눠보면 이렇다.
+
+- `counterStore`는 코어다
+- `useCounter`는 바인딩이다
+
+실제 상태는 `counterStore` 안에 있다. React 컴포넌트는 직접 상태를 들고 있는 것이 아니라, 바인딩을 통해 그 상태를 읽고 반응한다.
+
+![코어와 바인딩 구조](/static/images/state_structure.png)
+
+## Context는 바인딩일까?
+
+이 부분은 꽤 많이 헷갈린다.
+
+결론부터 말하면 `Context`만으로는 완전한 바인딩이 아니다.
+
+왜냐하면 Context는 주로 전달(access)을 해결해주기 때문이다.
+
+예를 들면 이런 식이다.
+
+```jsx
+<StoreContext.Provider value={store}>
+```
+
+이렇게 하면 하위 컴포넌트들이 `store`에 접근할 수 있다. 하지만 store 내부의 값이 바뀌었다고 해서 React가 자동으로 다시 렌더링되지는 않는다.
+
+즉, Context는 코어를 전달하는 역할은 잘하지만, 외부 상태의 변화를 React 렌더링과 연결하는 역할까지 자동으로 해주지는 않는다.
+
+그래서 Context만으로는 반쪽짜리 바인딩에 가깝다.
+
+## 완전한 바인딩은 어떻게 생겼을까?
+
+완전한 바인딩은 접근과 반응성을 둘 다 가져야 한다.
+
+```jsx
+import { useContext, useSyncExternalStore } from 'react'
+
+function useStore() {
+  const store = useContext(StoreContext)
+
+  return useSyncExternalStore(store.subscribe, store.getState)
+}
+```
+
+여기서 역할은 명확하다.
+
+- `useContext(StoreContext)`는 코어에 접근하게 해준다
+- `useSyncExternalStore`는 코어의 변경을 React 렌더링에 연결한다
+
+이 조합이야말로 진짜 바인딩이다.
+
+## useSyncExternalStore는 왜 필요할까?
+
+이제 핵심 질문이다.
+
+왜 `useSyncExternalStore`가 필요할까?
+
+이유는 간단하다. 코어는 React 바깥에 있기 때문이다.
+
+React는 자기 내부 상태인 `useState`, `useReducer`는 잘 안다. 하지만 외부에 있는 store 객체가 어떤 값을 가지고 있고, 언제 바뀌는지는 스스로 알 수 없다.
+
+그래서 React에게 이런 정보를 알려줄 공식적인 연결 장치가 필요하다.
+
+그 역할을 하는 것이 바로 `useSyncExternalStore`다.
+
+```jsx
+const state = useSyncExternalStore(store.subscribe, store.getState)
+```
+
+이 코드는 React에게 이렇게 말하는 것과 비슷하다.
+
+- 현재 값은 `getState()`로 읽을게
+- 값이 바뀌면 `subscribe()`를 통해 알려줘
+- 그러면 React가 안전하게 다시 렌더링할게
+
+즉, `useSyncExternalStore`는 외부 상태를 React와 연결하는 공식적인 방법이다.
+
+## useState와 external store의 차이
+
+이 차이를 감각적으로 이해하면 구조가 더 잘 보인다.
+
+### useState는 React 내부 상태다
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0)
+}
+```
+
+이 경우 상태는 컴포넌트 내부에 있다. React가 직접 관리하고, 렌더링 흐름도 React 안에서 닫혀 있다.
+
+특징은 이렇다.
+
+- 상태가 React 내부에 있다
+- 컴포넌트 단위로 관리된다
+- 지역 UI 상태에 적합하다
+
+### external store는 React 외부 상태다
+
+```jsx
+const count = useSyncExternalStore(store.subscribe, store.getState)
+```
+
+이 경우 상태는 store에 있다. React는 그 상태를 직접 소유하지 않고, 바인딩을 통해 읽고 구독한다.
+
+특징은 이렇다.
+
+- 상태가 React 외부에 있다
+- 여러 컴포넌트에서 공유하기 쉽다
+- 로직과 UI를 분리하기 좋다
+
+## 왜 많은 라이브러리들이 이 구조를 사용할까?
+
+이 구조가 자주 쓰이는 이유는 분명하다.
+
+### 1. 전역 공유가 쉽다
+
+여러 컴포넌트가 같은 상태를 바라봐야 할 때 자연스럽다.
+
+### 2. 로직과 UI를 분리할 수 있다
+
+코어를 React 없이 테스트하거나 재사용할 수 있다.
+
+### 3. 설계가 깔끔해진다
+
+상태를 관리하는 책임과, React에서 사용하는 책임이 분리된다.
+
+규모가 커질수록 이런 분리는 큰 장점이 된다.
+
+## 실제 라이브러리들도 같은 구조를 가진다
+
+이제 익숙한 라이브러리들을 이 관점으로 다시 보자.
+
+### Zustand
+
+- 코어: 내부 store
+- 바인딩: `useStore`
+
+### Redux
+
+- 코어: store, reducer
+- 바인딩: `useSelector`, `useDispatch`, `Provider`
+
+### React Query
+
+- 코어: `QueryClient`
+- 바인딩: `useQuery`, `useMutation`, `QueryClientProvider`
+
+### React Router
+
+- 코어: 라우터 상태와 히스토리 관리
+- 바인딩: `useNavigate`, `useParams`, `RouterProvider`
+
+각 라이브러리의 목적은 다르지만, 내부 구조는 비슷하게 볼 수 있다.
+
+> 코어는 상태와 로직을 담당하고, 바인딩은 React 사용성을 담당한다.
+
+## 이 관점이 중요한 이유
+
+이 구조를 이해하면 새로운 라이브러리를 볼 때 훨씬 빠르게 감이 온다.
+
+앞으로는 이렇게 생각하면 된다.
+
+### 상태와 로직은 어디에 있는가?
+
+이 질문의 답이 코어다.
+
+### React에서는 그것을 어떻게 가져오고 반응하는가?
+
+이 질문의 답이 바인딩이다.
+
+이 두 질문만 잘 던져도 라이브러리 구조가 훨씬 선명하게 보인다.
+
+## 마무리
+
+이 글의 핵심은 아주 단순하다.
+
+> 코어는 무엇을 할지를 담당하고, 바인딩은 React가 그것을 어떻게 사용할지를 담당한다.
+
+그리고 `useSyncExternalStore`는 React 바깥의 상태를 React 안으로 안전하게 연결해주는 핵심 도구다.
+
+앞으로 Zustand, Redux, React Query, React Router 같은 라이브러리를 볼 때 겉으로 드러난 API만 보지 말고 그 아래 구조를 이렇게 나눠서 보면 이해가 훨씬 쉬워질 것이다.
