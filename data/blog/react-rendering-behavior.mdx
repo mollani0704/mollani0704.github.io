@@ -1,0 +1,916 @@
+---
+title: 'React 랜더링 동작 정리'
+date: '2026-04-04'
+tags: ['react', 'rendering', 'performance', 'context']
+draft: false
+summary: 'React 렌더링과 리렌더링이 언제 왜 일어나는지, memo, Context, 불변성까지 예제와 함께 정리한 글'
+---
+
+이 글은 Mark Erikson의 글 [Blogged Answers: A (Mostly) Complete Guide to React Rendering Behavior](https://blog.isquaredsoftware.com/2020/05/blogged-answers-a-mostly-complete-guide-to-react-rendering-behavior/)를 참고해 정리한 글이다. 원문은 2020년 5월 17일에 게시되었고, 2022년 10월 React 18 관련 내용까지 반영해 업데이트되었다.
+
+완전한 번역보다는, 실제로 React를 공부하거나 실무에서 겪는 렌더링 오해를 이해하기 쉽게 다시 풀어쓴 정리라고 보면 된다.
+
+## 렌더링은 무엇이며, 리렌더링은 언제 일어나는가
+
+React를 공부하다 보면 가장 먼저 헷갈리는 개념이 바로 렌더링이다. 많은 개발자는 "렌더링이 일어났다"는 말을 "화면이 다시 바뀌었다"는 뜻으로 받아들인다. 그러나 React에서 렌더링은 더 정확히 말하면 **컴포넌트를 다시 실행해 현재 UI가 어떻게 생겨야 하는지 계산하는 과정**에 가깝다.
+
+실제 DOM 변경은 그 다음 단계에서 일어난다. 원문도 렌더링을 "현재 props와 state를 기반으로 UI가 어떻게 보여야 하는지 React가 컴포넌트에게 요청하는 프로세스"로 설명하며, 렌더 단계와 커밋 단계를 분리해서 이해해야 한다고 강조한다.
+
+## 1. 렌더링이란 무엇인가
+
+React에서 컴포넌트는 결국 함수다. 함수 컴포넌트라면 React는 해당 함수를 다시 호출하고, 클래스 컴포넌트라면 `render()`를 다시 호출한다. 그리고 그 결과로 나온 JSX를 바탕으로 "지금 UI가 이렇게 생겨야 한다"는 설명값을 만든다.
+
+JSX는 실제로는 `React.createElement()` 호출로 변환된다. 즉, 렌더링은 DOM을 즉시 만드는 과정이라기보다, **UI를 설명하는 객체 트리를 계산하는 과정**에 더 가깝다.
+
+예를 들어:
+
+```jsx
+function App() {
+  return <button>Click</button>
+}
+```
+
+React는 개념적으로 이를 이런 식으로 다룬다.
+
+```jsx
+function App() {
+  return React.createElement('button', null, 'Click')
+}
+```
+
+그리고 이 결과는 대략 아래와 비슷한 값으로 생각할 수 있다.
+
+```jsx
+{
+  type: 'button',
+  props: {},
+  children: ['Click'],
+}
+```
+
+즉, 렌더링은 "DOM을 바로 생성하는 행위"가 아니라 **컴포넌트를 실행해서 UI 설명값을 만드는 일**이다.
+
+## 2. 렌더 단계와 커밋 단계는 다르다
+
+이 글에서 가장 중요하게 구분해야 하는 개념은 **렌더 단계(Render Phase)** 와 **커밋 단계(Commit Phase)** 다.
+
+- 렌더 단계: 컴포넌트를 실행하고 변경 사항을 계산하는 단계
+- 커밋 단계: 렌더 단계에서 계산된 변경을 실제 DOM에 반영하는 단계
+
+원문은 DOM 업데이트 이후 `useLayoutEffect`와 클래스 생명주기 메서드가 먼저 동기적으로 실행되고, 그 뒤에 `useEffect`가 실행된다고 설명한다.
+
+흐름을 단순화하면 이렇다.
+
+```text
+state 변경
+-> 컴포넌트 함수 다시 실행
+-> 새로운 JSX 결과 계산
+-> 이전 결과와 비교
+-> 바뀐 부분만 DOM에 반영
+-> useLayoutEffect 실행
+-> useEffect 실행
+```
+
+이 점 때문에 **렌더링이 일어났다고 해서 반드시 화면이 바뀌는 것은 아니다.**
+
+예를 들어:
+
+```jsx
+function Message({ text }) {
+  console.log('Message render')
+  return <div>{text}</div>
+}
+```
+
+부모 컴포넌트가 다시 렌더링되면 `Message`도 다시 실행될 수 있다. 하지만 `text`가 이전과 같고 최종 결과도 같다면, 실제 DOM에는 거의 변화가 없을 수 있다.
+
+즉, **렌더 호출과 DOM 변경은 같은 말이 아니다.**
+
+![React 렌더링과 커밋 흐름 정리](/static/images/HookFlow.png)
+
+## 3. 리렌더링은 무엇이 트리거하는가
+
+첫 렌더 이후 React에게 다시 렌더링을 예약하게 만드는 대표적인 신호는 다음과 같다.
+
+- `useState` setter 호출
+- `useReducer` dispatch 호출
+- 클래스 컴포넌트의 `setState()`
+- 클래스 컴포넌트의 `forceUpdate()`
+- `useSyncExternalStore` 기반 외부 상태 업데이트
+
+가장 흔한 예시는 `useState`다.
+
+```jsx
+import { useState } from 'react'
+
+function Counter() {
+  const [count, setCount] = useState(0)
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+버튼을 누르면 `setCount`가 호출되고, React는 `Counter`를 다시 렌더링 큐에 넣는다.
+
+함수 컴포넌트에는 클래스처럼 공식 `forceUpdate()`는 없지만, 원문은 `useReducer`를 이용해 강제로 다시 렌더링하는 패턴도 소개한다.
+
+```jsx
+import { useReducer } from 'react'
+
+function ForceRenderExample() {
+  const [, forceRender] = useReducer((c) => c + 1, 0)
+
+  return <button onClick={forceRender}>강제 렌더</button>
+}
+```
+
+## 4. 부모가 렌더되면 자식도 기본적으로 렌더된다
+
+원문이 매우 강하게 강조하는 기본 규칙이 있다.
+
+> **React의 기본 동작은 상위 컴포넌트가 렌더링되면 그 내부의 하위 컴포넌트도 함께 순회하며 렌더링하는 것**이다.
+
+즉, 일반적인 렌더링에서는 "props가 바뀌었는지"를 먼저 따져서 자식 렌더링을 자동 차단하지 않는다. 부모가 렌더되면 자식도 렌더된다.
+
+```jsx
+import { useState } from 'react'
+
+function Parent() {
+  const [count, setCount] = useState(0)
+
+  console.log('Parent render')
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>증가</button>
+      <Child />
+    </div>
+  )
+}
+
+function Child() {
+  console.log('Child render')
+  return <div>자식 컴포넌트</div>
+}
+```
+
+버튼을 누르면 `Parent` 상태만 바뀌지만 실제로는 `Child`도 다시 실행된다.
+
+```text
+버튼 클릭
+-> Parent 상태 변경
+-> Parent render
+-> Child render
+```
+
+이 규칙을 이해하지 못하면 "props가 안 바뀌었는데 왜 자식이 렌더되지?"라는 질문이 계속 생긴다.
+
+## 5. 렌더링은 나쁜 것이 아니다
+
+원문은 "렌더링은 나쁜 것이 아니다"라고 분명히 말한다. React가 DOM을 바꿔야 하는지 판단하려면 먼저 렌더를 통해 새 결과를 계산하고 이전 결과와 비교해야 하기 때문이다.
+
+문제는 렌더링 그 자체가 아니라, **비용이 큰 렌더링이 너무 자주 일어나는 경우**다.
+
+가벼운 컴포넌트는 리렌더링이 일어나도 보통 큰 문제가 아니다.
+
+```jsx
+function TinyLabel({ text }) {
+  return <span>{text}</span>
+}
+```
+
+반면 렌더 안에서 무거운 계산이 들어 있으면 이야기가 달라진다.
+
+```jsx
+function ExpensiveList({ items }) {
+  const sorted = [...items].sort((a, b) => {
+    for (let i = 0; i < 1000000; i++) {}
+    return a.localeCompare(b)
+  })
+
+  return (
+    <ul>
+      {sorted.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+즉, "렌더링이 있다"가 아니라 **"비싼 렌더링이 자주 있다"** 가 성능 문제의 출발점이다.
+
+## 6. 렌더 함수는 순수해야 한다
+
+원문은 렌더링 로직의 중요한 규칙으로 **렌더는 순수해야 하며 사이드 이펙트가 없어야 한다**고 설명한다.
+
+렌더 중에는 이런 동작을 피해야 한다.
+
+- 기존 props나 state 객체 직접 변경
+- `Math.random()`이나 `Date.now()` 같은 임의 값 생성
+- 네트워크 요청
+- 상태 업데이트 예약
+
+좋지 않은 예시:
+
+```jsx
+function BadComponent({ user }) {
+  user.name = '변경됨'
+  const random = Math.random()
+  fetch('/api/data')
+
+  return <div>{random}</div>
+}
+```
+
+이 코드는 다음 문제를 만든다.
+
+- props를 직접 변경한다
+- 렌더마다 다른 값을 만든다
+- 렌더 중 외부 요청을 발생시킨다
+
+좋은 예시는 렌더에서 계산만 하고, 부수효과는 `useEffect`로 분리하는 것이다.
+
+```jsx
+function GoodComponent({ user }) {
+  const upperName = user.name.toUpperCase()
+
+  return <div>{upperName}</div>
+}
+```
+
+```jsx
+import { useEffect, useState } from 'react'
+
+function GoodFetchComponent() {
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetch('/api/data')
+      .then((res) => res.json())
+      .then((result) => {
+        if (!cancelled) setData(result)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return <div>{data ? data.name : '로딩 중'}</div>
+}
+```
+
+핵심은 이것이다.
+
+- 렌더는 계산
+- 이펙트는 부수효과 처리
+
+`useEffect`와 `useLayoutEffect`의 실행 시점은 말로만 보면 헷갈리기 쉬운데, 아래 흐름도를 함께 보면 렌더 단계와 커밋 이후 훅 실행 순서를 더 직관적으로 이해할 수 있다.
+
+![Hooks의 실행 흐름과 생명주기](/static/images/HooksLifeCycle.png)
+
+클래스 컴포넌트 관점에서 비교해 보면, 렌더 이후 어떤 생명주기 메서드가 어느 시점에 들어오는지도 감을 잡기 쉽다.
+
+![클래스 컴포넌트 생명주기 흐름](/static/images/classLifeCycle.png)
+
+## 7. 재조정과 컴포넌트의 정체성
+
+React는 새 렌더 결과와 이전 결과를 비교하면서 어떤 부분을 재사용하고 어떤 부분을 교체할지 판단한다. 이 과정을 보통 **재조정(Reconciliation)** 이라고 부른다.
+
+여기서 중요한 기준은 다음 세 가지다.
+
+- 컴포넌트 타입
+- 위치
+- `key`
+
+예를 들어:
+
+```jsx
+function App({ isLoggedIn }) {
+  return <div>{isLoggedIn ? <Profile /> : <LoginForm />}</div>
+}
+```
+
+`Profile`과 `LoginForm`은 타입이 다르다. 따라서 같은 위치에 있더라도 React는 서로 다른 존재로 보고 상태를 이어서 재사용하지 않을 수 있다.
+
+### `key`가 중요한 이유
+
+리스트 렌더링에서는 `key`가 컴포넌트 정체성을 결정하는 데 큰 역할을 한다.
+
+좋지 않은 예시:
+
+```jsx
+function TodoList({ todos }) {
+  return (
+    <ul>
+      {todos.map((todo, index) => (
+        <TodoItem key={index} todo={todo} />
+      ))}
+    </ul>
+  )
+}
+```
+
+목록 중간 삽입이나 정렬 변경이 생기면 index 기반 `key`는 기존 상태를 엉뚱하게 재사용하게 만들 수 있다.
+
+더 나은 예시:
+
+```jsx
+function TodoList({ todos }) {
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <TodoItem key={todo.id} todo={todo} />
+      ))}
+    </ul>
+  )
+}
+```
+
+즉, `key`는 단순히 경고를 없애는 용도가 아니라 **"이 아이템은 이전 렌더의 누구와 같은 존재인가"** 를 알려주는 값이다.
+
+## 8. 상태 업데이트는 왜 바로 반영되지 않는 것처럼 보이는가
+
+많이 헷갈리는 부분 중 하나가 바로 이것이다.
+
+```jsx
+import { useState } from 'react'
+
+function Counter() {
+  const [count, setCount] = useState(0)
+
+  const handleClick = () => {
+    setCount(count + 1)
+    console.log(count) // 0
+  }
+
+  return <button onClick={handleClick}>{count}</button>
+}
+```
+
+`setCount`를 호출했는데도 바로 다음 줄에서 `count`를 찍으면 기대한 새 값이 아니라 이전 값이 보인다.
+
+원문은 이것을 단순히 "비동기라서"라고만 설명하지 않는다. 더 정확히는 **이벤트 핸들러가 자신이 생성된 렌더 시점의 상태 값을 클로저로 잡고 있기 때문**이라고 설명한다.
+
+즉, 상태는 즉시 바뀌는 지역 변수가 아니라 **특정 렌더 시점의 스냅샷**이다.
+
+이럴 때 안전한 누적 업데이트가 필요하면 함수형 업데이트를 쓴다.
+
+```jsx
+import { useState } from 'react'
+
+function Counter() {
+  const [count, setCount] = useState(0)
+
+  const handleClick = () => {
+    setCount((prev) => prev + 1)
+    setCount((prev) => prev + 1)
+  }
+
+  return <button onClick={handleClick}>{count}</button>
+}
+```
+
+이 방식은 현재 클로저의 `count`가 아니라, 직전 계산 결과를 기반으로 동작하기 때문에 누적 업데이트에 안전하다.
+
+## 9. 배치 처리란 무엇인가
+
+원문은 여러 `setState()` 호출이 하나의 렌더 패스로 묶일 수 있는 현상을 **배치 처리(Batching)** 로 설명한다.
+
+예를 들어:
+
+```jsx
+import { useState } from 'react'
+
+function Example() {
+  const [count, setCount] = useState(0)
+
+  const handleClick = () => {
+    setCount(1)
+    setCount(2)
+    setCount(3)
+  }
+
+  return <button onClick={handleClick}>{count}</button>
+}
+```
+
+이 경우 업데이트마다 렌더가 따로 일어나는 것이 아니라, React가 하나의 배치로 묶어 처리할 수 있다.
+
+원문은 React 17까지는 주로 React 이벤트 핸들러 내부에서 배치가 일어났고, React 18부터는 같은 이벤트 루프 틱 안의 업데이트를 더 넓게 자동 배치한다고 설명한다.
+
+```jsx
+async function handleClick() {
+  setCount(0)
+  setCount(1)
+
+  const data = await fetchSomeData()
+
+  setCount(2)
+  setCount(3)
+}
+```
+
+이런 경우도 React 18 이후에는 예전보다 렌더 수가 줄어드는 상황이 많아졌다.
+
+## 10. 렌더링 최적화의 출발점
+
+최적화를 이해할 때 가장 먼저 기억해야 할 전제가 있다.
+
+> 기본값은 항상 다시 렌더된다는 것이다.
+
+따라서 질문은 "왜 렌더되냐"보다 아래처럼 바뀌어야 한다.
+
+- 이 렌더를 건너뛸 가치가 있는가
+- 건너뛰려면 어떤 조건을 만족해야 하는가
+
+이 관점이 있어야 `React.memo`, `useMemo`, `useCallback`의 필요성을 제대로 이해할 수 있다.
+
+## 11. `React.memo`는 무엇을 막는가
+
+`React.memo`는 props가 같다면 자식 컴포넌트의 리렌더링을 건너뛰도록 도와준다. 원문은 `React.memo`, `PureComponent`, `shouldComponentUpdate` 모두 기본적으로 **얕은 비교(shallow comparison)** 에 기대고 있다고 설명한다.
+
+```jsx
+import React, { useState } from 'react'
+
+const Child = React.memo(function Child({ value }) {
+  console.log('Child render')
+  return <div>{value}</div>
+})
+
+function Parent() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>증가</button>
+      <Child value="고정값" />
+    </div>
+  )
+}
+```
+
+위 예시에서는 `Parent`가 다시 렌더되더라도 `Child`의 `value`가 같다면 `Child`는 렌더를 건너뛸 수 있다.
+
+하지만 객체나 함수 props는 다르다.
+
+```jsx
+const Child = React.memo(function Child({ data }) {
+  console.log('Child render')
+  return <div>{data.name}</div>
+})
+
+function Parent() {
+  const [count, setCount] = useState(0)
+
+  const data = { name: 'Kim' }
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>증가</button>
+      <Child data={data} />
+    </div>
+  )
+}
+```
+
+여기서 `data`는 매 렌더마다 새 객체가 되므로 `React.memo`가 기대한 만큼 효과를 내지 못할 수 있다.
+
+## 12. 새 객체나 새 함수를 만든다고 항상 문제인 것은 아니다
+
+이 부분은 자주 오해된다.
+
+원문은 **기본적으로 React는 props가 같든 다르든 자식을 다시 렌더하기 때문에**, memo 최적화를 하지 않은 일반 자식에게는 부모가 새 객체나 새 함수를 전달하는 것이 큰 문제가 아닐 수 있다고 설명한다.
+
+즉, 새 참조가 진짜 문제가 되는 순간은 주로 **memo 기반 최적화와 결합될 때**다.
+
+```jsx
+function NormalChild({ onClick, data }) {
+  console.log('NormalChild render')
+  return <button onClick={onClick}>{data.label}</button>
+}
+
+function Parent() {
+  const onClick = () => console.log('clicked')
+  const data = { label: '버튼' }
+
+  return <NormalChild onClick={onClick} data={data} />
+}
+```
+
+일반 자식이라면 이 코드는 보통 크게 문제되지 않는다.
+
+반면 memoized child라면 다르다.
+
+```jsx
+const MemoChild = React.memo(function MemoChild({ onClick, data }) {
+  console.log('MemoChild render')
+  return <button onClick={onClick}>{data.label}</button>
+})
+
+function Parent() {
+  const onClick = () => console.log('clicked')
+  const data = { label: '버튼' }
+
+  return <MemoChild onClick={onClick} data={data} />
+}
+```
+
+이 경우엔 매 렌더마다 참조가 달라져 `React.memo` 이점이 줄어든다.
+
+## 13. `useCallback`과 `useMemo`는 왜 필요한가
+
+위와 같은 상황에서 참조를 안정적으로 유지하려고 `useCallback`과 `useMemo`를 사용한다.
+
+### `useCallback`
+
+함수 참조를 재사용한다.
+
+```jsx
+import React, { useCallback, useState } from 'react'
+
+const Child = React.memo(function Child({ onClick }) {
+  console.log('Child render')
+  return <button onClick={onClick}>자식 버튼</button>
+})
+
+function Parent() {
+  const [count, setCount] = useState(0)
+
+  const handleChildClick = useCallback(() => {
+    console.log('자식 버튼 클릭')
+  }, [])
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>부모 증가</button>
+      <Child onClick={handleChildClick} />
+    </div>
+  )
+}
+```
+
+### `useMemo`
+
+객체나 계산 결과의 참조를 재사용한다.
+
+```jsx
+import React, { useMemo, useState } from 'react'
+
+const Child = React.memo(function Child({ config }) {
+  console.log('Child render')
+  return <div>{config.title}</div>
+})
+
+function Parent() {
+  const [count, setCount] = useState(0)
+
+  const config = useMemo(() => {
+    return { title: '고정 설정' }
+  }, [])
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>증가</button>
+      <Child config={config} />
+    </div>
+  )
+}
+```
+
+원문은 요소 자체를 `useMemo`로 감싸는 방식도 소개한다.
+
+```jsx
+import { useMemo, useState } from 'react'
+
+function ExpensiveChild() {
+  console.log('ExpensiveChild render')
+  return <div>비싼 자식</div>
+}
+
+function Parent() {
+  const [counter1, setCounter1] = useState(0)
+  const [counter2, setCounter2] = useState(0)
+
+  const memoizedChild = useMemo(() => {
+    return <ExpensiveChild />
+  }, [counter1])
+
+  return (
+    <div>
+      <button onClick={() => setCounter1((c) => c + 1)}>counter1</button>
+      <button onClick={() => setCounter2((c) => c + 1)}>counter2</button>
+      {memoizedChild}
+    </div>
+  )
+}
+```
+
+또한 `props.children`을 그대로 출력에 포함하는 경우, 자신이 상태를 업데이트하더라도 children 요소 자체는 동일하게 유지될 수 있다고 설명한다.
+
+```jsx
+import { useState } from 'react'
+
+function SomeProvider({ children }) {
+  const [counter, setCounter] = useState(0)
+
+  return (
+    <div>
+      <button onClick={() => setCounter(counter + 1)}>Count: {counter}</button>
+      {children}
+    </div>
+  )
+}
+```
+
+## 14. 불변성이 왜 중요한가
+
+원문은 상태 업데이트가 항상 불변하게 수행되어야 하는 이유를 크게 두 가지로 설명한다.
+
+- 예상한 리렌더링이 일어나지 않을 수 있다
+- 데이터 변경 추적이 어려워진다
+
+특히 `React.memo`, `PureComponent`, `shouldComponentUpdate`는 얕은 비교를 사용하므로, 참조가 그대로면 React는 "안 바뀌었다"고 판단할 수 있다.
+
+좋지 않은 예시:
+
+```jsx
+import { useState } from 'react'
+
+function UserProfile() {
+  const [user, setUser] = useState({ name: 'Kim', age: 20 })
+
+  const increaseAge = () => {
+    user.age += 1
+    setUser(user)
+  }
+
+  return (
+    <div>
+      <p>{user.name}</p>
+      <p>{user.age}</p>
+      <button onClick={increaseAge}>나이 증가</button>
+    </div>
+  )
+}
+```
+
+좋은 예시:
+
+```jsx
+import { useState } from 'react'
+
+function UserProfile() {
+  const [user, setUser] = useState({ name: 'Kim', age: 20 })
+
+  const increaseAge = () => {
+    setUser((prev) => ({
+      ...prev,
+      age: prev.age + 1,
+    }))
+  }
+
+  return (
+    <div>
+      <p>{user.name}</p>
+      <p>{user.age}</p>
+      <button onClick={increaseAge}>나이 증가</button>
+    </div>
+  )
+}
+```
+
+배열도 마찬가지다.
+
+```jsx
+const [items, setItems] = useState(['a', 'b'])
+
+function addItem() {
+  items.push('c')
+  setItems(items)
+}
+```
+
+```jsx
+const [items, setItems] = useState(['a', 'b'])
+
+function addItem() {
+  setItems((prev) => [...prev, 'c'])
+}
+```
+
+불변성은 단순 취향이 아니라 **React가 변경을 추적하고 최적화할 수 있게 해주는 기본 전제**다.
+
+## 15. Context는 왜 리렌더링을 크게 퍼뜨릴 수 있는가
+
+Context는 편리하지만, 잘못 쓰면 리렌더링 범위가 넓어질 수 있다.
+
+원문은 Provider를 감싸는 컴포넌트가 렌더될 때 React가 Provider의 `value`가 새 참조인지 확인하고, 새 참조라면 해당 Context를 사용하는 컴포넌트들을 업데이트 대상으로 본다고 설명한다.
+
+```jsx
+import { createContext, useContext, useState } from 'react'
+
+const MyContext = createContext(null)
+
+function Grandchild() {
+  const value = useContext(MyContext)
+  console.log('Grandchild render')
+  return <div>{value.a}</div>
+}
+
+function Child() {
+  return <Grandchild />
+}
+
+function Parent() {
+  const [a, setA] = useState(0)
+  const [b, setB] = useState('text')
+
+  const contextValue = { a, b }
+
+  return (
+    <MyContext.Provider value={contextValue}>
+      <button onClick={() => setA(a + 1)}>a 증가</button>
+      <button onClick={() => setB(b + '!')}>b 변경</button>
+      <Child />
+    </MyContext.Provider>
+  )
+}
+```
+
+위 코드에서 `contextValue`는 매 렌더마다 새 객체다. 따라서 `a`가 바뀌든 `b`가 바뀌든 Context 소비자는 다시 렌더될 가능성이 크다.
+
+### Context 최적화 기본 전략
+
+1. Provider `value`를 `useMemo`로 감싼다.
+2. 자주 바뀌는 값과 잘 안 바뀌는 값을 Context로 분리한다.
+3. 큰 Context 객체 하나에 모든 것을 넣지 않는다.
+
+```jsx
+import { useMemo, useState } from 'react'
+
+function Parent() {
+  const [a, setA] = useState(0)
+  const [b, setB] = useState('text')
+
+  const contextValue = useMemo(() => ({ a, b }), [a, b])
+
+  return <MyContext.Provider value={contextValue}>{/* ... */}</MyContext.Provider>
+}
+```
+
+아예 Context를 분리하는 방법도 있다.
+
+```jsx
+import { createContext, useState } from 'react'
+
+const AContext = createContext(0)
+const BContext = createContext('')
+
+function Parent() {
+  const [a, setA] = useState(0)
+  const [b, setB] = useState('text')
+
+  return (
+    <AContext.Provider value={a}>
+      <BContext.Provider value={b}>
+        <Child />
+      </BContext.Provider>
+    </AContext.Provider>
+  )
+}
+```
+
+## 16. Context와 Redux 계열 접근의 차이
+
+원문 후반부는 React-Redux와 렌더링 동작도 다룬다. 핵심은 Context가 "값 전체 전달"에 가깝다면, Redux 계열은 "필요한 조각만 구독"하도록 설계되는 경우가 많다는 점이다.
+
+예를 들어 Context는 Provider `value` 전체 참조에 민감하다.
+
+```jsx
+<MyContext.Provider value={{ user, theme }}>
+  <App />
+</MyContext.Provider>
+```
+
+반면 Redux selector는 필요한 조각만 읽도록 작성할 수 있다.
+
+```jsx
+const userName = useSelector((state) => state.user.name)
+```
+
+물론 selector가 매번 새 객체를 만들면 이 역시 최적화에 불리할 수 있다. 결국 중요한 것은 "무엇을 구독하고, 어떤 참조를 반환하는가"다.
+
+## 17. 실무에서 자주 만나는 렌더링 오해
+
+아래 오해는 실무에서 정말 자주 등장한다.
+
+### props가 안 바뀌었는데 왜 자식이 다시 렌더되는가
+
+기본적으로 부모가 렌더되면 자식도 다시 렌더되기 때문이다. `memo`가 있어야 비로소 건너뛰기를 기대할 수 있다.
+
+### `setState` 직후 콘솔 값이 왜 이전 값인가
+
+현재 핸들러는 이전 렌더 시점의 상태 스냅샷을 보고 있기 때문이다.
+
+### `React.memo`를 썼는데 왜 여전히 렌더되는가
+
+객체나 함수 props가 새 참조로 전달되었을 가능성이 크다.
+
+### Context 하나로 상태를 몰아넣었더니 왜 느려졌는가
+
+Provider `value`가 자주 새 참조가 되면서 Context 소비자 리렌더링이 넓게 퍼졌기 때문이다.
+
+### 상태를 직접 수정하면 왜 안 되는가
+
+불변성이 깨지면 React의 얕은 비교와 렌더링 추적이 꼬일 수 있기 때문이다.
+
+## 18. 이해를 돕는 종합 예제
+
+지금까지 설명한 내용을 한 번에 묶어 보면 아래와 같다.
+
+```jsx
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+
+const ThemeContext = createContext(null)
+
+const MemoChild = React.memo(function MemoChild({ config, onSave }) {
+  console.log('MemoChild render')
+  return (
+    <div>
+      <p>{config.title}</p>
+      <button onClick={onSave}>저장</button>
+    </div>
+  )
+})
+
+function ThemeViewer() {
+  const theme = useContext(ThemeContext)
+  console.log('ThemeViewer render')
+  return <div>현재 테마: {theme.mode}</div>
+}
+
+export default function App() {
+  const [count, setCount] = useState(0)
+  const [mode, setMode] = useState('light')
+
+  const config = useMemo(() => {
+    return { title: '설정 화면' }
+  }, [])
+
+  const handleSave = useCallback(() => {
+    console.log('저장')
+  }, [])
+
+  const themeValue = useMemo(() => {
+    return { mode }
+  }, [mode])
+
+  return (
+    <ThemeContext.Provider value={themeValue}>
+      <div>
+        <button onClick={() => setCount((c) => c + 1)}>count 증가: {count}</button>
+
+        <button onClick={() => setMode((prev) => (prev === 'light' ? 'dark' : 'light'))}>
+          테마 변경
+        </button>
+
+        <MemoChild config={config} onSave={handleSave} />
+        <ThemeViewer />
+      </div>
+    </ThemeContext.Provider>
+  )
+}
+```
+
+이 코드에서 관찰할 수 있는 점은 다음과 같다.
+
+- `count`만 바뀌면 부모는 다시 렌더된다
+- `MemoChild`는 `config`, `onSave` 참조가 안정적이므로 건너뛸 수 있다
+- `ThemeViewer`는 Context를 읽기 때문에 `mode`가 바뀌면 다시 렌더된다
+- `themeValue`를 `useMemo`로 감싸지 않으면 Provider `value`가 더 자주 새 참조가 되어 불필요한 업데이트가 퍼질 수 있다
+
+## 19. 반드시 기억해야 할 핵심 정리
+
+- 렌더링은 DOM 변경과 같은 말이 아니다
+- 렌더링은 컴포넌트를 다시 실행해 새 UI 결과를 계산하는 과정이다
+- 부모가 렌더되면 자식도 기본적으로 렌더된다
+- 렌더는 순수해야 하며 부수효과를 넣으면 안 된다
+- 상태는 즉시 바뀌는 변수보다 다음 렌더를 위한 스냅샷에 가깝다
+- `React.memo`는 props가 같을 때 자식 렌더를 줄이는 장치다
+- 객체와 함수 참조 안정성은 memo 최적화와 함께 볼 때 중요하다
+- 불변성은 React의 변경 추적과 최적화의 기반이다
+- Context는 편리하지만 Provider `value` 참조 변화에 따라 리렌더링이 넓게 퍼질 수 있다
+
+## 맺음말
+
+이 글의 가장 큰 가치는 "리렌더링은 왜 일어나는가"를 단순 암기가 아니라 구조로 이해하게 만든다는 점이다.
+
+많은 초급 개발자는 "props가 바뀌면 렌더", "state가 바뀌면 렌더" 정도로만 기억한다. 하지만 실제 React의 동작은 그보다 훨씬 정교하다. **부모 렌더에 따른 자식 렌더, 렌더와 커밋의 구분, 상태 스냅샷, 얕은 비교, 참조 안정성, 불변성, Context 전파 방식**까지 함께 이해해야 비로소 "왜 이 컴포넌트가 다시 실행되었는가"를 설명할 수 있다.
+
+원문은 바로 이 전체 그림을 제공하는 글이다. 결국 핵심은 한 문장으로 요약된다.
+
+> React는 상태 변화가 있을 때 컴포넌트 함수를 다시 실행해 새 UI를 계산하고, 그 결과를 비교해 필요한 부분만 반영하며, 최적화는 그 계산 범위와 비용을 줄이는 방향으로 이루어진다.
