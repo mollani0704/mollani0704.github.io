@@ -1,4 +1,7 @@
 {
+  "react": 5,
+  "hooks": 1,
+  "useeffect": 1,
   "markdown": 1,
   "code": 1,
   "features": 1,
@@ -13,7 +16,6 @@
   "holiday": 1,
   "canada": 1,
   "images": 1,
-  "react": 4,
   "architecture": 1,
   "state-management": 1,
   "rendering": 1,
