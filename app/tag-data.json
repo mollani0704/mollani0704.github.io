@@ -11,7 +11,7 @@
   "github": 1,
   "guide": 5,
   "tailwind": 3,
-  "javascript": 2,
+  "javascript": 3,
   "hello": 1,
   "holiday": 1,
   "canada": 1,
@@ -31,5 +31,7 @@
   "refactoring": 1,
   "clean-code": 1,
   "software-engineering": 1,
+  "redux": 1,
+  "immutability": 1,
   "multi-author": 1
 }
