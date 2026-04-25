@@ -1,7 +1,7 @@
 ---
 title: 'Redux에서 왜 기존 State를 직접 변경하면 안 될까?'
 date: '2026-04-13'
-tags: ['redux', 'javascript', 'immutability']
+tags: ['react']
 draft: false
 summary: 'JavaScript의 참조값과 불변성 개념을 바탕으로 Redux에서 왜 기존 state를 직접 변경하면 안 되는지 예제와 함께 정리한 글'
 ---
@@ -515,9 +515,7 @@ function reducer(state, action) {
 function reducer(state, action) {
   return {
     ...state,
-    todos: state.todos.map((todo) =>
-      todo.id === action.payload ? { ...todo, done: true } : todo
-    ),
+    todos: state.todos.map((todo) => (todo.id === action.payload ? { ...todo, done: true } : todo)),
   }
 }
 ```
@@ -534,9 +532,7 @@ const state = {
 
 const nextState = {
   ...state,
-  todos: state.todos.map((todo) =>
-    todo.id === 1 ? { ...todo, done: true } : todo
-  ),
+  todos: state.todos.map((todo) => (todo.id === 1 ? { ...todo, done: true } : todo)),
 }
 
 console.log(state.todos[0].done) // false
@@ -670,9 +666,7 @@ console.log(state.todos[0] === nextTodos[0]) // true
 올바른 방식:
 
 ```js
-const nextTodos = state.todos.map((todo, index) =>
-  index === 0 ? { ...todo, done: true } : todo
-)
+const nextTodos = state.todos.map((todo, index) => (index === 0 ? { ...todo, done: true } : todo))
 ```
 
 ### 실수 3. `sort()`를 안전하다고 착각하기
@@ -830,9 +824,7 @@ return {
 ```js
 return {
   ...state,
-  todos: state.todos.map((todo) =>
-    todo.id === id ? { ...todo, done: true } : todo
-  ),
+  todos: state.todos.map((todo) => (todo.id === id ? { ...todo, done: true } : todo)),
 }
 ```
 

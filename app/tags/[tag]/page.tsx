@@ -3,11 +3,11 @@ import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer'
 import siteMetadata from '@/data/siteMetadata'
 import ListLayout from '@/layouts/ListLayoutWithTags'
 import { allBlogs } from 'contentlayer/generated'
-import tagData from 'app/tag-data.json'
 import { genPageMetadata } from 'app/seo'
 import { Metadata } from 'next'
 
 const POSTS_PER_PAGE = 5
+const displayTags = ['react', 'javascript', 'vue', 'spring', 'ai', 'etc']
 
 export async function generateMetadata(props: {
   params: Promise<{ tag: string }>
@@ -27,9 +27,7 @@ export async function generateMetadata(props: {
 }
 
 export const generateStaticParams = async () => {
-  const tagCounts = tagData as Record<string, number>
-  const tagKeys = Object.keys(tagCounts)
-  return tagKeys.map((tag) => ({
+  return displayTags.map((tag) => ({
     tag: encodeURI(tag),
   }))
 }

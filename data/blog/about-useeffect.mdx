@@ -1,7 +1,7 @@
 ---
 title: 'useEffect에 대하여'
 date: '2026-04-08'
-tags: ['react', 'hooks', 'useeffect']
+tags: ['react']
 draft: false
 summary: 'useEffect의 본래 역할과 남용하면 안 되는 경우, 그리고 정말 써야 하는 상황을 예제와 함께 정리한 글'
 ---
@@ -29,32 +29,24 @@ React 공식 문서는 불필요한 Effect를 제거하면 코드가 더 단순�
 나쁜 예시는 다음과 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function UserProfileForm() {
-  const [firstName, setFirstName] = useState('Jongseong');
-  const [lastName, setLastName] = useState('Moon');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('Jongseong')
+  const [lastName, setLastName] = useState('Moon')
+  const [fullName, setFullName] = useState('')
 
   useEffect(() => {
-    setFullName(`${firstName} ${lastName}`);
-  }, [firstName, lastName]);
+    setFullName(`${firstName} ${lastName}`)
+  }, [firstName, lastName])
 
   return (
     <div>
-      <input
-        value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
-        placeholder="이름"
-      />
-      <input
-        value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
-        placeholder="성"
-      />
+      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="이름" />
+      <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="성" />
       <p>전체 이름: {fullName}</p>
     </div>
-  );
+  )
 }
 ```
 
@@ -63,29 +55,21 @@ function UserProfileForm() {
 좋은 예시는 다음과 같다.
 
 ```jsx
-import { useState } from 'react';
+import { useState } from 'react'
 
 function UserProfileForm() {
-  const [firstName, setFirstName] = useState('Jongseong');
-  const [lastName, setLastName] = useState('Moon');
+  const [firstName, setFirstName] = useState('Jongseong')
+  const [lastName, setLastName] = useState('Moon')
 
-  const fullName = `${firstName} ${lastName}`;
+  const fullName = `${firstName} ${lastName}`
 
   return (
     <div>
-      <input
-        value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
-        placeholder="이름"
-      />
-      <input
-        value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
-        placeholder="성"
-      />
+      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="이름" />
+      <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="성" />
       <p>전체 이름: {fullName}</p>
     </div>
-  );
+  )
 }
 ```
 
@@ -98,17 +82,17 @@ function UserProfileForm() {
 나쁜 예시는 아래와 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function ProductList({ products, keyword }) {
-  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([])
 
   useEffect(() => {
     const next = products.filter((product) =>
       product.name.toLowerCase().includes(keyword.toLowerCase())
-    );
-    setFilteredProducts(next);
-  }, [products, keyword]);
+    )
+    setFilteredProducts(next)
+  }, [products, keyword])
 
   return (
     <ul>
@@ -116,7 +100,7 @@ function ProductList({ products, keyword }) {
         <li key={product.id}>{product.name}</li>
       ))}
     </ul>
-  );
+  )
 }
 ```
 
@@ -126,7 +110,7 @@ function ProductList({ products, keyword }) {
 function ProductList({ products, keyword }) {
   const filteredProducts = products.filter((product) =>
     product.name.toLowerCase().includes(keyword.toLowerCase())
-  );
+  )
 
   return (
     <ul>
@@ -134,7 +118,7 @@ function ProductList({ products, keyword }) {
         <li key={product.id}>{product.name}</li>
       ))}
     </ul>
-  );
+  )
 }
 ```
 
@@ -147,23 +131,23 @@ React 공식 문서는 "사용자 이벤트를 처리하기 위해 Effect가 필
 나쁜 예시는 다음과 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function PurchaseButton() {
-  const [shouldBuy, setShouldBuy] = useState(false);
+  const [shouldBuy, setShouldBuy] = useState(false)
 
   useEffect(() => {
-    if (!shouldBuy) return;
+    if (!shouldBuy) return
 
     async function buy() {
-      await fetch('/api/buy', { method: 'POST' });
-      alert('구매가 완료되었습니다.');
+      await fetch('/api/buy', { method: 'POST' })
+      alert('구매가 완료되었습니다.')
     }
 
-    buy();
-  }, [shouldBuy]);
+    buy()
+  }, [shouldBuy])
 
-  return <button onClick={() => setShouldBuy(true)}>구매하기</button>;
+  return <button onClick={() => setShouldBuy(true)}>구매하기</button>
 }
 ```
 
@@ -174,11 +158,11 @@ function PurchaseButton() {
 ```jsx
 function PurchaseButton() {
   const handleBuy = async () => {
-    await fetch('/api/buy', { method: 'POST' });
-    alert('구매가 완료되었습니다.');
-  };
+    await fetch('/api/buy', { method: 'POST' })
+    alert('구매가 완료되었습니다.')
+  }
 
-  return <button onClick={handleBuy}>구매하기</button>;
+  return <button onClick={handleBuy}>구매하기</button>
 }
 ```
 
@@ -189,34 +173,34 @@ function PurchaseButton() {
 나쁜 예시는 다음과 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function Parent() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(null)
 
-  return <Child onFetched={setUser} />;
+  return <Child onFetched={setUser} />
 }
 
 function Child({ onFetched }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(null)
 
   useEffect(() => {
     async function fetchUser() {
-      const response = await fetch('/api/user');
-      const result = await response.json();
-      setData(result);
+      const response = await fetch('/api/user')
+      const result = await response.json()
+      setData(result)
     }
 
-    fetchUser();
-  }, []);
+    fetchUser()
+  }, [])
 
   useEffect(() => {
     if (data) {
-      onFetched(data);
+      onFetched(data)
     }
-  }, [data, onFetched]);
+  }, [data, onFetched])
 
-  return <div>{data ? data.name : '로딩 중...'}</div>;
+  return <div>{data ? data.name : '로딩 중...'}</div>
 }
 ```
 
@@ -225,39 +209,39 @@ function Child({ onFetched }) {
 더 좋은 예시는 아래와 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function Parent() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(null)
 
   useEffect(() => {
-    let ignore = false;
+    let ignore = false
 
     async function fetchUser() {
-      const response = await fetch('/api/user');
-      const result = await response.json();
+      const response = await fetch('/api/user')
+      const result = await response.json()
 
       if (!ignore) {
-        setUser(result);
+        setUser(result)
       }
     }
 
-    fetchUser();
+    fetchUser()
 
     return () => {
-      ignore = true;
-    };
-  }, []);
+      ignore = true
+    }
+  }, [])
 
-  return <Child user={user} />;
+  return <Child user={user} />
 }
 
 function Child({ user }) {
   if (!user) {
-    return <div>로딩 중...</div>;
+    return <div>로딩 중...</div>
   }
 
-  return <div>{user.name}</div>;
+  return <div>{user.name}</div>
 }
 ```
 
@@ -272,24 +256,24 @@ React 공식 문서는 `useEffect`의 대표적인 용도를 네트워크 연결
 예를 들어 브라우저 이벤트 구독은 전형적인 Effect 사용 사례이다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function WindowWidthViewer() {
-  const [width, setWidth] = useState(window.innerWidth);
+  const [width, setWidth] = useState(window.innerWidth)
 
   useEffect(() => {
     function handleResize() {
-      setWidth(window.innerWidth);
+      setWidth(window.innerWidth)
     }
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize)
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
 
-  return <p>현재 창 너비: {width}px</p>;
+  return <p>현재 창 너비: {width}px</p>
 }
 ```
 
@@ -300,22 +284,22 @@ function WindowWidthViewer() {
 타이머 역시 React 외부의 시스템이다. `setInterval`, `setTimeout` 같은 브라우저 API는 렌더링과 별개로 동작하므로, 컴포넌트의 생명주기에 맞춰 등록과 해제를 관리해야 한다. React 공식 문서도 타이머를 Effect의 대표 예시로 든다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function Clock() {
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState(new Date())
 
   useEffect(() => {
     const timerId = setInterval(() => {
-      setTime(new Date());
-    }, 1000);
+      setTime(new Date())
+    }, 1000)
 
     return () => {
-      clearInterval(timerId);
-    };
-  }, []);
+      clearInterval(timerId)
+    }
+  }, [])
 
-  return <p>{time.toLocaleTimeString()}</p>;
+  return <p>{time.toLocaleTimeString()}</p>
 }
 ```
 
@@ -326,22 +310,22 @@ function Clock() {
 React 바깥에서 동작하는 위젯, 차트, 애니메이션, 지도 라이브러리 같은 것들은 React 상태가 바뀌었다고 자동으로 동기화되지 않는다. 이때는 Effect에서 해당 라이브러리의 API를 호출해 React 상태를 반영해야 한다. React 공식 문서도 비 React 위젯 제어를 `useEffect` 사용 예시로 소개한다.
 
 ```jsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react'
 
 function VideoPlayer({ isPlaying }) {
-  const videoRef = useRef(null);
+  const videoRef = useRef(null)
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    if (!videoRef.current) return
 
     if (isPlaying) {
-      videoRef.current.play();
+      videoRef.current.play()
     } else {
-      videoRef.current.pause();
+      videoRef.current.pause()
     }
-  }, [isPlaying]);
+  }, [isPlaying])
 
-  return <video ref={videoRef} width="400" src="/sample-video.mp4" controls />;
+  return <video ref={videoRef} width="400" src="/sample-video.mp4" controls />
 }
 ```
 
@@ -362,59 +346,59 @@ function VideoPlayer({ isPlaying }) {
 기본적인 데이터 패칭 예시는 다음과 같다.
 
 ```jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function UserDetail({ userId }) {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [user, setUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    let ignore = false;
+    let ignore = false
 
     async function fetchUser() {
       try {
-        setIsLoading(true);
-        setError(null);
+        setIsLoading(true)
+        setError(null)
 
-        const response = await fetch(`/api/users/${userId}`);
+        const response = await fetch(`/api/users/${userId}`)
         if (!response.ok) {
-          throw new Error('사용자 정보를 불러오지 못했습니다.');
+          throw new Error('사용자 정보를 불러오지 못했습니다.')
         }
 
-        const result = await response.json();
+        const result = await response.json()
 
         if (!ignore) {
-          setUser(result);
+          setUser(result)
         }
       } catch (err) {
         if (!ignore) {
-          setError(err.message);
+          setError(err.message)
         }
       } finally {
         if (!ignore) {
-          setIsLoading(false);
+          setIsLoading(false)
         }
       }
     }
 
-    fetchUser();
+    fetchUser()
 
     return () => {
-      ignore = true;
-    };
-  }, [userId]);
+      ignore = true
+    }
+  }, [userId])
 
   if (isLoading) {
-    return <div>불러오는 중...</div>;
+    return <div>불러오는 중...</div>
   }
 
   if (error) {
-    return <div>에러: {error}</div>;
+    return <div>에러: {error}</div>
   }
 
   if (!user) {
-    return null;
+    return null
   }
 
   return (
@@ -422,7 +406,7 @@ function UserDetail({ userId }) {
       <h2>{user.name}</h2>
       <p>{user.email}</p>
     </section>
-  );
+  )
 }
 ```
 
@@ -435,21 +419,21 @@ function UserDetail({ userId }) {
 자식 컴포넌트에서 클릭으로 상태를 바꾸고, 그 상태 변화를 Effect가 감지해 부모에게 알리는 방식은 비효율적이다. 글은 이런 구조가 렌더를 한 번 더 만들기 때문에, 가능하면 이벤트 핸들러 안에서 필요한 상태 업데이트를 한 번에 처리하라고 제안한다. React 공식 문서도 사용자 이벤트는 해당 이벤트 핸들러에서 처리하는 것이 일반적이라고 설명한다.
 
 ```jsx
-import { useState } from 'react';
+import { useState } from 'react'
 
 function Parent() {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(false)
 
-  return <ToggleButton onChange={setEnabled} value={enabled} />;
+  return <ToggleButton onChange={setEnabled} value={enabled} />
 }
 
 function ToggleButton({ value, onChange }) {
   const handleClick = () => {
-    const nextValue = !value;
-    onChange(nextValue);
-  };
+    const nextValue = !value
+    onChange(nextValue)
+  }
 
-  return <button onClick={handleClick}>현재 상태: {value ? 'ON' : 'OFF'}</button>;
+  return <button onClick={handleClick}>현재 상태: {value ? 'ON' : 'OFF'}</button>
 }
 ```
 

@@ -1,7 +1,7 @@
 ---
 title: '좋은 리팩토링이란?'
 date: '2026-03-30'
-tags: ['refactoring', 'clean-code', 'software-engineering']
+tags: ['etc']
 draft: false
 summary: '좋은 리팩터링과 나쁜 리팩터링의 차이를 구조 개선, 추상화, 일관성, 비즈니스 맥락 관점에서 코드 예시와 함께 정리한 글'
 ---
@@ -42,10 +42,7 @@ function getActiveUserNames(users) {
 ```js
 import { pipe, filter, map, prop } from 'ramda'
 
-const getActiveUserNames = pipe(
-  filter(prop('isActive')),
-  map(prop('name'))
-)
+const getActiveUserNames = pipe(filter(prop('isActive')), map(prop('name')))
 ```
 
 기능은 같지만, 팀이 `ramda`나 함수 합성 스타일에 익숙하지 않다면 오히려 읽기 어려워질 수 있다. 스타일 취향이 구조 개선보다 앞선 경우다.

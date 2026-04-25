@@ -1,20 +1,5 @@
 {
-  "redux": 1,
-  "javascript": 3,
-  "immutability": 1,
-  "react": 5,
-  "hooks": 1,
-  "useeffect": 1,
-  "rendering": 1,
-  "performance": 1,
-  "context": 1,
-  "architecture": 1,
-  "state-management": 1,
-  "refactoring": 1,
-  "clean-code": 1,
-  "software-engineering": 1,
-  "date": 1,
-  "temporal": 1,
-  "timezone": 1,
-  "next-js": 1
+  "react": 6,
+  "javascript": 2,
+  "etc": 2
 }

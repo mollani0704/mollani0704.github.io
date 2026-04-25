@@ -10,6 +10,8 @@ import Tag from '@/components/Tag'
 import siteMetadata from '@/data/siteMetadata'
 import tagData from 'app/tag-data.json'
 
+const displayTags = ['react', 'javascript', 'vue', 'spring', 'ai', 'etc']
+
 interface PaginationProps {
   totalPages: number
   currentPage: number
@@ -74,8 +76,6 @@ export default function ListLayoutWithTags({
 }: ListLayoutProps) {
   const pathname = usePathname()
   const tagCounts = tagData as Record<string, number>
-  const tagKeys = Object.keys(tagCounts)
-  const sortedTags = tagKeys.sort((a, b) => tagCounts[b] - tagCounts[a])
 
   const displayPosts = initialDisplayPosts.length > 0 ? initialDisplayPosts : posts
 
@@ -101,12 +101,12 @@ export default function ListLayoutWithTags({
                 </Link>
               )}
               <ul>
-                {sortedTags.map((t) => {
+                {displayTags.map((t) => {
                   return (
                     <li key={t} className="my-3">
                       {decodeURI(pathname.split('/tags/')[1]) === slug(t) ? (
                         <h3 className="text-primary-500 inline px-3 py-2 text-sm font-bold uppercase">
-                          {`${t} (${tagCounts[t]})`}
+                          {`${t} (${tagCounts[t] ?? 0})`}
                         </h3>
                       ) : (
                         <Link
@@ -114,7 +114,7 @@ export default function ListLayoutWithTags({
                           className="hover:text-primary-500 dark:hover:text-primary-500 px-3 py-2 text-sm font-medium text-gray-500 uppercase dark:text-gray-300"
                           aria-label={`View posts tagged ${t}`}
                         >
-                          {`${t} (${tagCounts[t]})`}
+                          {`${t} (${tagCounts[t] ?? 0})`}
                         </Link>
                       )}
                     </li>
@@ -146,7 +146,9 @@ export default function ListLayoutWithTags({
                             </Link>
                           </h2>
                           <div className="flex flex-wrap">
-                            {tags?.map((tag) => <Tag key={tag} text={tag} />)}
+                            {tags?.map((tag) => (
+                              <Tag key={tag} text={tag} />
+                            ))}
                           </div>
                         </div>
                         <div className="prose max-w-none text-gray-500 dark:text-gray-400">
